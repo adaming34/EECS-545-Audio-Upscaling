@@ -21,38 +21,7 @@ by following the instructions on the website.
 # CPU:
 # !pip install torch==1.7.0+cpu torchvision==0.8.1+cpu torchaudio==0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
 
-# GPU:
-# !pip install torch==1.7.0+cu101 torchvision==0.8.1+cu101 torchaudio==0.7.0 -f https://download.pytorch.org/whl/torch_stable.html
-
-# For interactive demo at the end:
-# !pip install pydub
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torchaudio
-
-import matplotlib.pyplot as plt
-import IPython.display as ipd
-from tqdm.notebook import tqdm
-
-
-######################################################################
-# Let’s check if a CUDA GPU is available and select our device. Running
-# the network on a GPU will greatly decrease the training/testing runtime.
-#
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
-
-
-######################################################################
-# Importing the Dataset
-# ---------------------
-#
-# We use torchaudio to download and represent the dataset. Here we use
-# `SpeechCommands <https://arxiv.org/abs/1804.03209>`__, which is a
+.org/abs/1804.03209>`__, which is a
 # datasets of 35 commands spoken by different people. The dataset
 # ``SPEECHCOMMANDS`` is a ``torch.utils.data.Dataset`` version of the
 # dataset. In this dataset, all audio files are about 1 second long (and

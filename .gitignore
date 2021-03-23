@@ -1,0 +1,9 @@
+#######################################
+# Project Specific
+#######################################
+#sampledata
+/VCTK-Corpus-0.92
+#zip and tar files
+.zip
+.tar.gz
+.wav
