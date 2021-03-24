@@ -13,13 +13,8 @@ import audio_low_res_proccessing as alrp
 
 import os
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
 
 
-VCTK_data = torchaudio.datasets.VCTK_092('./', download=False)
-
-data_loader = torch.utils.data.DataLoader(VCTK_data, batch_size=1, shuffle=False) #change shuffle to true when actually running
 
 ###########################################################
 
@@ -34,7 +29,7 @@ class Net(nn.Module):
         filt = 48
         size = 51
 
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 8)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 16)
         n_filtersizes = np.array([65, 33, 17,  9,  9,  9,  9, 9, 9])
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
 
@@ -49,18 +44,18 @@ class Net(nn.Module):
         self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6])
         self.down8 = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7])
 
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.5)
         self.leakyRelu = nn.LeakyReLU(0.2)
 
         self.downSampling = [] #np.array([])
-        self.up1 = nn.Conv1d(n_filters[7]*1, n_filters[6]*2, n_filtersizes[7], padding = n_padding[7])
-        self.up2 = nn.Conv1d(n_filters[6]*2, n_filters[5]*2, n_filtersizes[6], padding = n_padding[6])
-        self.up3 = nn.Conv1d(n_filters[5]*2, n_filters[4]*2, n_filtersizes[5], padding = n_padding[5])
-        self.up4 = nn.Conv1d(n_filters[4]*2, n_filters[3]*2, n_filtersizes[4], padding = n_padding[4])
-        self.up5 = nn.Conv1d(n_filters[3]*2, n_filters[2]*2, n_filtersizes[3], padding = n_padding[3])
-        self.up6 = nn.Conv1d(n_filters[2]*2, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
-        self.up7 = nn.Conv1d(n_filters[1]*2, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
-        self.up8 = nn.Conv1d(n_filters[0]*2, 1, n_filtersizes[0], padding = n_padding[0])
+        self.up1 = nn.Conv1d(n_filters[7]*1, n_filters[6]*1, n_filtersizes[7], padding = n_padding[7])
+        self.up2 = nn.Conv1d(n_filters[6]*1, n_filters[5]*1, n_filtersizes[6], padding = n_padding[6])
+        self.up3 = nn.Conv1d(n_filters[5]*1, n_filters[4]*1, n_filtersizes[5], padding = n_padding[5])
+        self.up4 = nn.Conv1d(n_filters[4]*1, n_filters[3]*1, n_filtersizes[4], padding = n_padding[4])
+        self.up5 = nn.Conv1d(n_filters[3]*1, n_filters[2]*1, n_filtersizes[3], padding = n_padding[3])
+        self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*1, n_filtersizes[2], padding = n_padding[2])
+        self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*1, n_filtersizes[1], padding = n_padding[1])
+        self.up8 = nn.Conv1d(n_filters[0]*1, 1, n_filtersizes[0], padding = n_padding[0])
         
         
 
@@ -68,22 +63,23 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down1(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down2(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down3(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down4(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down5(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down6(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down7(x))
-        # self.downSampling.append(x)
+        self.downSampling.append(x)
         x = self.leakyRelu(self.down8(x))
-        # self.downSampling.append(x)
+        
 
         return x
 
@@ -101,14 +97,15 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
-        x = F.relu(self.dropout(self.up1(x)))
-        x = F.relu(self.dropout(self.up2(x)))
-        x = F.relu(self.dropout(self.up3(x)))
-        x = F.relu(self.dropout(self.up4(x)))
-        x = F.relu(self.dropout(self.up5(x)))
-        x = F.relu(self.dropout(self.up6(x)))
-        x = F.relu(self.dropout(self.up7(x)))
-        x = F.relu(self.dropout(self.up8(x)))
+        x = F.relu(self.dropout(self.up1(x))) + self.downSampling[7]
+        x = F.relu(self.dropout(self.up2(x))) + self.downSampling[6]
+        x = F.relu(self.dropout(self.up3(x))) + self.downSampling[5]
+        x = F.relu(self.dropout(self.up4(x))) + self.downSampling[4]
+        x = F.relu(self.dropout(self.up5(x))) + self.downSampling[3]
+        x = F.relu(self.dropout(self.up6(x))) + self.downSampling[2]
+        x = F.relu(self.dropout(self.up7(x))) + self.downSampling[1]
+        x = F.relu(self.dropout(self.up8(x))) + self.downSampling[0]
+        self.downSampling.clear()
         return x
 
     def forward(self, x):
@@ -122,73 +119,81 @@ class Net(nn.Module):
         return x
 
 
-net = Net()
-net.to(device)
-criterion = nn.MSELoss()  # nn.CrossEntropyLoss()
-optimizer = optim.AdamW(net.parameters(), lr=0.005)
-
-###########################################################
-
-start_time = time.perf_counter()
-for k in range(301):
-    running_loss = 0.0
-    itr = 0
-    for data in data_loader:
-        input, target = alrp.data_to_inp_tar(data, device)
-
-        optimizer.zero_grad()
-
-        output = net(input)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-        # break # REMOVE BEFORE FLIGHT
-        del loss, output
-        if itr % 1 == 0:
-            print('At iteration ', itr, ',running loss: ', running_loss)
-        itr = itr + 1
 
 
 
-    k = k + 1
+def main():
+    # Load Data
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
+    VCTK_data = torchaudio.datasets.VCTK_092('./', download=False)
+    data_loader = torch.utils.data.DataLoader(VCTK_data, batch_size=1, shuffle=False) #change shuffle to true when actually running
+    
+    # Train
+    net = Net()
+    net.to(device)
+    criterion = nn.MSELoss()  # nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+
+    ###########################################################
+
+    start_time = time.perf_counter()
+
+    for k in range(5):
+        running_loss = 0.0
+        
+        itr = 0
+        for data in data_loader:
+            if data[3][0] != 'p225':
+                break
+
+            inp, target = alrp.data_to_inp_tar(data, device)
+
+            optimizer.zero_grad()
+
+            output = net(inp)
+            loss = criterion(output, target)
+            running_loss += loss.item()
+            loss.backward()
+            optimizer.step()
+            
+            if itr % 10 == 0:
+                print('At iteration ', itr, ',loss: ', loss.item(), end = '\r')
+            itr = itr + 1
+
+            del loss, output
+
+        print('\n--------------------------------\nEPOCH:', k, ', TOTAL LOSS:', running_loss, '\n--------------------------------\n')
+        # print(net.down1.weight.T)
+        k = k + 1
 
 
-print('Finished training, it took: ',
-      (time.perf_counter() - start_time), 'seconds')
+    print('Finished training, it took: ',
+        (time.perf_counter() - start_time), 'seconds')
 
-PATH = './superAudioNet.pth'
-torch.save(net.state_dict(), PATH)
+    PATH = './superAudioNet.pth'
+    torch.save(net.state_dict(), PATH)
 
-# Test!
-start_time = time.perf_counter()
+    # Test!
+    start_time = time.perf_counter()
 
-with torch.no_grad():
-    tar = targets[trainingCase, :, :, :].to(device).unsqueeze(0)
-    outs = net(inputs[trainingCase, :, :, :].to(device).unsqueeze(0))
-    loss = criterion(outs, tar)
-    print('Test data loss: ', loss.item())
-
-print('Finished testing, it took: ',
-      (time.perf_counter() - start_time), 'seconds')
+    with torch.no_grad():
+        net.eval()
+        data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic1.flac")
+        low_res_input, _ = alrp.data_to_inp_tar(data, device)
 
 
-def plotAnalysis(anaNum):
-    """
-    docstring
-    """
-    # fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3)
-    # fig.suptitle('Horizontally stacked subplots')
-    # ax1.imshow(inputs[trainingCase,0,:,:], cmap="gray")
-    # ax1.axis('off'), ax2.axis('off'), ax3.axis('off'), ax4.axis('off'), ax5.axis('off'), ax6.axis('off')
-    # ax2.imshow(tar[0,0,:,:].cpu().detach().numpy() , cmap="gray")
-    # ax3.imshow(outs[0,0,:,:].cpu().detach().numpy() , cmap="gray")
-    # ax5.imshow(tar[0,1,:,:].cpu().detach().numpy() , cmap="gray")
-    # ax6.imshow(outs[0,1,:,:].cpu().detach().numpy() , cmap="gray")
-    # plt.show()
-    return
+        high_res_output = net(low_res_input)
+        high_res_output = torch.reshape(high_res_output.cpu().detach(),(1,-1))
+        low_res_input = torch.reshape(low_res_input.cpu().detach(),(1,-1))
+        alrp.save_low_high_audio(high_res_output, low_res_input, 16000)
+        alrp.plot_spectogram(high_res_output)
+        alrp.plot_spectogram(low_res_input)
+
+    print('Finished testing, it took: ',
+        (time.perf_counter() - start_time), 'seconds')
 
 
-plotAnalysis(0)
-print('done')
+if __name__ == '__main__':
+    main()
+    

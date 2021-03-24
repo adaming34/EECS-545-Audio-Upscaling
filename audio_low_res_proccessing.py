@@ -32,13 +32,14 @@ def plot_spectogram(signal):
     specgram = torchaudio.transforms.Spectrogram()(signal)
     plt.figure()
     plt.imshow(specgram.log2()[0,:,:].numpy())
+    plt.show()
 
 def save_low_high_audio(high_res, low_res, sample_rate):
     path = "low_res.wav"
     torchaudio.save(path, low_res, sample_rate)
     path = "high_res.wav"
     torchaudio.save(path, high_res, sample_rate)
-    plt.show()
+    
 
 def data_to_inp_tar(data, device):
     # waveform is the ideal 
