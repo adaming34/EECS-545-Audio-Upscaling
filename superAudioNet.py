@@ -29,7 +29,7 @@ class Net(nn.Module):
         filt = 48
         size = 51
 
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 16)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 8)
         n_filtersizes = np.array([65, 33, 17,  9,  9,  9,  9, 9, 9])
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
 
@@ -140,7 +140,7 @@ def main():
 
     start_time = time.perf_counter()
 
-    for k in range(5):
+    for k in range(50):
         running_loss = 0.0
         
         itr = 0
@@ -177,12 +177,12 @@ def main():
 
     # Test!
     start_time = time.perf_counter()
+    net.eval()
 
     with torch.no_grad():
-        net.eval()
+        
         data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic1.flac")
         low_res_input, _ = alrp.data_to_inp_tar(data, device)
-
 
         high_res_output = net(low_res_input)
         high_res_output = torch.reshape(high_res_output.cpu().detach(),(1,-1))
