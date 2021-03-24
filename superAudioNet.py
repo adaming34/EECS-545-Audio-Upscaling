@@ -104,7 +104,8 @@ class Net(nn.Module):
         x = F.relu(self.dropout(self.up5(x))) + self.downSampling[3]
         x = F.relu(self.dropout(self.up6(x))) + self.downSampling[2]
         x = F.relu(self.dropout(self.up7(x))) + self.downSampling[1]
-        x = F.relu(self.dropout(self.up8(x))) + self.downSampling[0]
+        x = F.relu(self.dropout(self.up8(x)))# + self.downSampling[0] 
+        # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
         return x
 
