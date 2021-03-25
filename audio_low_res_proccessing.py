@@ -45,18 +45,19 @@ def data_to_inp_tar(data, device):
     # waveform is the ideal 
     waveform = torch.reshape(data[0], (1, -1)) # remove a dim (1,1,N) -> (1,N)
 
-    #  need to make sure the input signal is divisible by 4000 (1/12th)
-    divisions = 12
-    while waveform.shape[1] % divisions != 0:
-        # keep removing last element until condition is met
-        waveform = waveform[:,0:(waveform.shape[1] - 1)]
-
     sample_rate = data[1]
     high_res_rate = 16000
     low_res_rate = 4000
 
     # Downscale from 48000 to 16000 (still sounds good)
     high_res = change_res(waveform, sample_rate, high_res_rate)
+
+    #  need to make sure the input signal is divisible by 4000 (1/12th)
+    divisions = 512
+    while high_res.shape[1] % divisions != 0:
+        # keep removing last element until condition is met
+        high_res = high_res[:,0:(high_res.shape[1] - 1)]
+    
     # Downscale from 16000 to 4000 (kinda crunchy)
     low_res = change_res(high_res, high_res_rate, low_res_rate)
     # Upscale from 4000 to 16000 to match sizes (still crunchy, but same size)

@@ -29,33 +29,35 @@ class Net(nn.Module):
         filt = 48
         size = 51
 
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 8)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 2)
+        self.n_filters = n_filters
         n_filtersizes = np.array([65, 33, 17,  9,  9,  9,  9, 9, 9])
+        self.n_filtersizes = n_filtersizes
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
 
         #torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros')
 
-        self.down1 = nn.Conv1d(1, n_filters[0], n_filtersizes[0], padding = n_padding[0])
-        self.down2 = nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1])
-        self.down3 = nn.Conv1d(n_filters[1], n_filters[2], n_filtersizes[2], padding = n_padding[2])
-        self.down4 = nn.Conv1d(n_filters[2], n_filters[3], n_filtersizes[3], padding = n_padding[3])
-        self.down5 = nn.Conv1d(n_filters[3], n_filters[4], n_filtersizes[4], padding = n_padding[4])
-        self.down6 = nn.Conv1d(n_filters[4], n_filters[5], n_filtersizes[5], padding = n_padding[5])
-        self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6])
-        self.down8 = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7])
+        self.down1 = nn.Conv1d(1, n_filters[0], n_filtersizes[0], padding = n_padding[0], stride=2)
+        self.down2 = nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1], stride=2)
+        self.down3 = nn.Conv1d(n_filters[1], n_filters[2], n_filtersizes[2], padding = n_padding[2], stride=2)
+        self.down4 = nn.Conv1d(n_filters[2], n_filters[3], n_filtersizes[3], padding = n_padding[3], stride=2)
+        self.down5 = nn.Conv1d(n_filters[3], n_filters[4], n_filtersizes[4], padding = n_padding[4], stride=2)
+        self.down6 = nn.Conv1d(n_filters[4], n_filters[5], n_filtersizes[5], padding = n_padding[5], stride=2)
+        self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6], stride=2)
+        self.bottle = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7], stride=2)
 
         self.dropout = nn.Dropout(0.5)
         self.leakyRelu = nn.LeakyReLU(0.2)
 
         self.downSampling = [] #np.array([])
-        self.up1 = nn.Conv1d(n_filters[7]*1, n_filters[6]*1, n_filtersizes[7], padding = n_padding[7])
-        self.up2 = nn.Conv1d(n_filters[6]*1, n_filters[5]*1, n_filtersizes[6], padding = n_padding[6])
-        self.up3 = nn.Conv1d(n_filters[5]*1, n_filters[4]*1, n_filtersizes[5], padding = n_padding[5])
-        self.up4 = nn.Conv1d(n_filters[4]*1, n_filters[3]*1, n_filtersizes[4], padding = n_padding[4])
-        self.up5 = nn.Conv1d(n_filters[3]*1, n_filters[2]*1, n_filtersizes[3], padding = n_padding[3])
-        self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*1, n_filtersizes[2], padding = n_padding[2])
-        self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*1, n_filtersizes[1], padding = n_padding[1])
-        self.up8 = nn.Conv1d(n_filters[0]*1, 1, n_filtersizes[0], padding = n_padding[0])
+        self.up1 = nn.Conv1d(n_filters[7], n_filters[6]*2, n_filtersizes[7], padding = n_padding[7])
+        self.up2 = nn.Conv1d(n_filters[6]*1, n_filters[5]*2, n_filtersizes[6], padding = n_padding[6])
+        self.up3 = nn.Conv1d(n_filters[5]*1, n_filters[4]*2, n_filtersizes[5], padding = n_padding[5])
+        self.up4 = nn.Conv1d(n_filters[4]*1, n_filters[3]*2, n_filtersizes[4], padding = n_padding[4])
+        self.up5 = nn.Conv1d(n_filters[3]*1, n_filters[2]*2, n_filtersizes[3], padding = n_padding[3])
+        self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
+        self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
+        self.up8 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
         
         
 
@@ -78,8 +80,6 @@ class Net(nn.Module):
         self.downSampling.append(x)
         x = self.leakyRelu(self.down7(x))
         self.downSampling.append(x)
-        x = self.leakyRelu(self.down8(x))
-        
 
         return x
 
@@ -87,7 +87,7 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
-        x = self.down8(x)
+        x = self.bottle(x)
         x = self.dropout(x)
         x = self.leakyRelu(x)
         
@@ -97,17 +97,25 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
-        x = F.relu(self.dropout(self.up1(x))) + self.downSampling[7]
-        x = F.relu(self.dropout(self.up2(x))) + self.downSampling[6]
-        x = F.relu(self.dropout(self.up3(x))) + self.downSampling[5]
-        x = F.relu(self.dropout(self.up4(x))) + self.downSampling[4]
-        x = F.relu(self.dropout(self.up5(x))) + self.downSampling[3]
-        x = F.relu(self.dropout(self.up6(x))) + self.downSampling[2]
-        x = F.relu(self.dropout(self.up7(x))) + self.downSampling[1]
-        x = F.relu(self.dropout(self.up8(x)))# + self.downSampling[0] 
+        # print("before:",x.shape)
+        x = self.resize(F.relu(self.dropout(self.up1(x)))) + self.downSampling[7]
+        # print("after shape: ", x.shape)
+        # print("downsample size: ", self.downSampling[7].shape)
+        x = self.resize(F.relu(self.dropout(self.up2(x)))) + self.downSampling[6]
+        x = self.resize(F.relu(self.dropout(self.up3(x)))) + self.downSampling[5]
+        x = self.resize(F.relu(self.dropout(self.up4(x)))) + self.downSampling[4]
+        x = self.resize(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
+        x = self.resize(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
+        x = self.resize(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
+        x = self.resize(F.relu(self.dropout(self.up8(x)))) #+ self.downSampling[0]
         # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
         return x
+
+    def resize(self, inp):
+        dims = (inp.shape)
+        inp = torch.reshape(inp, (int(dims[0]), int(dims[1]/2), int(dims[2]*2)))
+        return inp
 
     def forward(self, x):
         '''
@@ -134,13 +142,13 @@ def main():
     net = Net()
     net.to(device)
     criterion = nn.MSELoss()  # nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=0.1)
 
     ###########################################################
 
     start_time = time.perf_counter()
 
-    for k in range(50):
+    for k in range(10):
         running_loss = 0.0
         
         itr = 0
