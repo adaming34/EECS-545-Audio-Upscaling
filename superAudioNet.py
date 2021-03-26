@@ -27,9 +27,9 @@ class Net(nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 8)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]))
         self.n_filters = n_filters
-        n_filtersizes = np.array([65, 33, 17,  9,  9,  9, 9, 9, 9])
+        n_filtersizes = np.array([7, 7, 7, 7, 7, 7, 7, 7, 7])
         self.n_filtersizes = n_filtersizes
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
         scale_factor = 2
@@ -45,7 +45,7 @@ class Net(nn.Module):
         self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6], stride=2)
         self.bottle = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7], stride=2)
 
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(0.0)
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.pixel_upsample = PixelShuffle1D(scale_factor)
 
@@ -58,7 +58,7 @@ class Net(nn.Module):
         self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
         self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
         self.up8 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
-        # self.up9 = nn.Conv1d(1, n_filters[0]*2, n_filtersizes[0], padding = n_padding[0])
+        # self.up9 = nn.Conv1d(n_filters[0]*1, n_filters[0]*2, n_filtersizes[0], padding = n_padding[0])
         # self.up10 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
         
         
@@ -112,11 +112,11 @@ class Net(nn.Module):
         x = self.pixel_upsample(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
         x = self.pixel_upsample(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
         x = self.pixel_upsample(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
-        x = self.pixel_upsample((self.dropout(self.up8(x)))) + self.downSampling[0]
+        x = self.pixel_upsample((self.up8(x))) + self.downSampling[0]
         # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
-        # x = self.resize(F.relu(self.dropout(self.up9(x))))
-        # x = self.resize(F.relu(self.dropout(self.up10(x))))
+        # x = self.pixel_upsample(F.relu(self.dropout(self.up9(x))))
+        # x = self.pixel_upsample(((self.up10(x))))
         return x
 
     def resize(self, inp):
@@ -149,22 +149,22 @@ def main():
     net = Net()
     net.to(device)
 
-    # def weights_init(m):
-    #     if isinstance(m, nn.Conv2d):
-    #         nn.init.orthogonal(m.weight.data)
-    #         nn.init.orthogonal(m.bias.data)
+    def weights_init(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.orthogonal(m.weight.data)
+            nn.init.orthogonal(m.bias.data)
 
     # net.apply(weights_init)
 
     criterion = nn.MSELoss()  # nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.02)
+    optimizer = optim.Adam(net.parameters())
     # nn.utils.clip_grad_value_(net.parameters(), clip_value=1.0)
 
     ###########################################################
-
+    PATH = './superAudioNet.pth'
     start_time = time.perf_counter()
 
-    for k in range(15):
+    for k in range(50):
         running_loss = 0.0
         
         itr = 0
@@ -189,22 +189,23 @@ def main():
             optimizer.step()
             
             
-            if itr % 10 == 0:
-                print('At iteration ', itr, ',loss: ', loss.item(), end = '\r')
+            if itr % 25 == 0:
+                print('At iteration ', itr, ',loss: ', loss.item(), end = '\r')  
             itr = itr + 1
 
             del loss, output
 
         print('\n--------------------------------\nEPOCH:', k, ', TOTAL LOSS:', running_loss, '\n--------------------------------\n')
         # print(net.up8.weight.T)
+        torch.save(net.state_dict(), PATH)
         k = k + 1
 
 
     print('Finished training, it took: ',
         (time.perf_counter() - start_time), 'seconds')
 
-    PATH = './superAudioNet.pth'
-    torch.save(net.state_dict(), PATH)
+    
+    
 
     # Test!
     start_time = time.perf_counter()
@@ -212,7 +213,7 @@ def main():
 
     with torch.no_grad():
         
-        data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic1.flac")
+        data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic2.flac")
         low_res_input, actual_high_res = alrp.data_to_inp_tar(data, device)
 
         high_res_output = net(low_res_input)

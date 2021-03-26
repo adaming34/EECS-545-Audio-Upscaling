@@ -23,11 +23,11 @@ def test_output_audio(low_res_input, sample_rate, PATH, device):
     model.eval()
     with torch.no_grad():
         high_res_output = model(low_res_input)
-        high_res_output = high_res_output.cpu().detach()
-        low_res_input = low_res_input.cpu().detach()
-        alrp.save_low_high_audio(torch.reshape(high_res_output,(1,-1)), torch.reshape(low_res_input,(1,-1)), sample_rate)
+        high_res_output = torch.reshape(high_res_output.cpu().detach(),(1,-1))
+        low_res_input = torch.reshape(low_res_input.cpu().detach(),(1,-1))
+        alrp.save_low_high_audio(high_res_output, low_res_input, 16000)
 
-data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic1.flac")
+data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic2.flac")
 low_res_input, _ = alrp.data_to_inp_tar(data, device)
 PATH = './superAudioNet.pth'
 test_output_audio(low_res_input, 16000, PATH, device)
