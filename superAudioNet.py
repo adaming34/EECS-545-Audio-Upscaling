@@ -62,11 +62,14 @@ class Net(nn.Module):
         # self.up10 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
         
         
+        
+        
 
     def forward_downsample(self, x):
         '''
         Insert caption
         '''
+        
         self.downSampling.append(x)
         x = self.leakyRelu(self.down1(x))
         self.downSampling.append(x)
@@ -109,7 +112,7 @@ class Net(nn.Module):
         x = self.pixel_upsample(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
         x = self.pixel_upsample(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
         x = self.pixel_upsample(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
-        x = self.pixel_upsample(F.relu(self.dropout(self.up8(x)))) #+ self.downSampling[0]
+        x = self.pixel_upsample((self.dropout(self.up8(x)))) + self.downSampling[0]
         # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
         # x = self.resize(F.relu(self.dropout(self.up9(x))))
@@ -161,7 +164,7 @@ def main():
 
     start_time = time.perf_counter()
 
-    for k in range(50):
+    for k in range(15):
         running_loss = 0.0
         
         itr = 0
@@ -170,6 +173,7 @@ def main():
                 break
 
             inp, target = alrp.data_to_inp_tar(data, device)
+            
             # inp = torch.reshape(inp.cpu().detach(),(1,-1))
             # target = torch.reshape(target.cpu().detach(),(1,-1))
             # alrp.save_low_high_audio(target, inp, 16000)
@@ -209,14 +213,16 @@ def main():
     with torch.no_grad():
         
         data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic1.flac")
-        low_res_input, _ = alrp.data_to_inp_tar(data, device)
+        low_res_input, actual_high_res = alrp.data_to_inp_tar(data, device)
 
         high_res_output = net(low_res_input)
+        actual_high_res = torch.reshape(actual_high_res.cpu().detach(),(1,-1))
         high_res_output = torch.reshape(high_res_output.cpu().detach(),(1,-1))
         low_res_input = torch.reshape(low_res_input.cpu().detach(),(1,-1))
         alrp.save_low_high_audio(high_res_output, low_res_input, 16000)
-        alrp.plot_spectogram(high_res_output)
-        alrp.plot_spectogram(low_res_input)
+        alrp.plot_spectrogram(high_res_output, 16000)
+        alrp.plot_spectrogram(low_res_input, 16000)
+        alrp.plot_spectrogram(actual_high_res, 16000)
 
     print('Finished testing, it took: ',
         (time.perf_counter() - start_time), 'seconds')

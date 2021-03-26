@@ -31,7 +31,14 @@ def change_res(high_res_input, sample_rate_high_res, new_sample_rate):
 def plot_spectogram(signal):
     specgram = torchaudio.transforms.Spectrogram()(signal)
     plt.figure()
-    plt.imshow(specgram.log2()[0,:,:].numpy())
+    plt.imshow(specgram.log2()[0,:,:].numpy(), aspect='auto', origin='lower')
+    plt.show()
+
+def plot_spectrogram(signal, samplerate):
+    specgram = torchaudio.transforms.Spectrogram()(signal)
+    plt.figure()
+    ex = (0, signal.shape[1] / samplerate, 0, samplerate/2)
+    plt.imshow(specgram.log2()[0,:,:].numpy(), aspect='auto', origin='lower', extent=ex)
     plt.show()
 
 def save_low_high_audio(high_res, low_res, sample_rate):
@@ -71,6 +78,9 @@ def data_to_inp_tar(data, device):
     # plot_spectogram(low_res_high_rate)
     # plot_spectogram(high_res)
     ##########################################################
+
+    # low_res = torch.reshape(low_res.cpu().detach(),(1,-1))
+    # plot_spectrogram(low_res, 4000)
 
     input = low_res_high_rate.to(device)
     target = high_res.to(device)
