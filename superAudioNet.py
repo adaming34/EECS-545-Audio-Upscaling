@@ -9,6 +9,7 @@ import cv2
 import time
 
 from torchaudio.datasets import VCTK_092
+from pixelshuffle1d import PixelShuffle1D, PixelUnshuffle1D
 import audio_low_res_proccessing as alrp
 
 import os
@@ -26,14 +27,12 @@ class Net(nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
-        filt = 48
-        size = 51
-
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 2)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 8)
         self.n_filters = n_filters
-        n_filtersizes = np.array([65, 33, 17,  9,  9,  9,  9, 9, 9])
+        n_filtersizes = np.array([65, 33, 17,  9,  9,  9, 9, 9, 9])
         self.n_filtersizes = n_filtersizes
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
+        scale_factor = 2
 
         #torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros')
 
@@ -48,6 +47,7 @@ class Net(nn.Module):
 
         self.dropout = nn.Dropout(0.5)
         self.leakyRelu = nn.LeakyReLU(0.2)
+        self.pixel_upsample = PixelShuffle1D(scale_factor)
 
         self.downSampling = [] #np.array([])
         self.up1 = nn.Conv1d(n_filters[7], n_filters[6]*2, n_filtersizes[7], padding = n_padding[7])
@@ -58,6 +58,8 @@ class Net(nn.Module):
         self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
         self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
         self.up8 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
+        # self.up9 = nn.Conv1d(1, n_filters[0]*2, n_filtersizes[0], padding = n_padding[0])
+        # self.up10 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
         
         
 
@@ -97,19 +99,21 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
-        # print("before:",x.shape)
-        x = self.resize(F.relu(self.dropout(self.up1(x)))) + self.downSampling[7]
+        # printpixel_upsamplere:",x.shape)
+        x = self.pixel_upsample(F.relu(self.dropout(self.up1(x)))) + self.downSampling[7]
         # print("after shape: ", x.shape)
         # print("downsample size: ", self.downSampling[7].shape)
-        x = self.resize(F.relu(self.dropout(self.up2(x)))) + self.downSampling[6]
-        x = self.resize(F.relu(self.dropout(self.up3(x)))) + self.downSampling[5]
-        x = self.resize(F.relu(self.dropout(self.up4(x)))) + self.downSampling[4]
-        x = self.resize(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
-        x = self.resize(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
-        x = self.resize(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
-        x = self.resize(F.relu(self.dropout(self.up8(x)))) #+ self.downSampling[0]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up2(x)))) + self.downSampling[6]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up3(x)))) + self.downSampling[5]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up4(x)))) + self.downSampling[4]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up8(x)))) #+ self.downSampling[0]
         # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
+        # x = self.resize(F.relu(self.dropout(self.up9(x))))
+        # x = self.resize(F.relu(self.dropout(self.up10(x))))
         return x
 
     def resize(self, inp):
@@ -141,22 +145,36 @@ def main():
     # Train
     net = Net()
     net.to(device)
+
+    # def weights_init(m):
+    #     if isinstance(m, nn.Conv2d):
+    #         nn.init.orthogonal(m.weight.data)
+    #         nn.init.orthogonal(m.bias.data)
+
+    # net.apply(weights_init)
+
     criterion = nn.MSELoss()  # nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.1)
+    optimizer = optim.SGD(net.parameters(), lr=0.02)
+    # nn.utils.clip_grad_value_(net.parameters(), clip_value=1.0)
 
     ###########################################################
 
     start_time = time.perf_counter()
 
-    for k in range(10):
+    for k in range(50):
         running_loss = 0.0
         
         itr = 0
         for data in data_loader:
-            if data[3][0] != 'p225':
+            if data[3][0] != 'p225':# and data[3][0] != 'p226':
                 break
 
             inp, target = alrp.data_to_inp_tar(data, device)
+            # inp = torch.reshape(inp.cpu().detach(),(1,-1))
+            # target = torch.reshape(target.cpu().detach(),(1,-1))
+            # alrp.save_low_high_audio(target, inp, 16000)
+
+            # break
 
             optimizer.zero_grad()
 
@@ -166,6 +184,7 @@ def main():
             loss.backward()
             optimizer.step()
             
+            
             if itr % 10 == 0:
                 print('At iteration ', itr, ',loss: ', loss.item(), end = '\r')
             itr = itr + 1
@@ -173,7 +192,7 @@ def main():
             del loss, output
 
         print('\n--------------------------------\nEPOCH:', k, ', TOTAL LOSS:', running_loss, '\n--------------------------------\n')
-        # print(net.down1.weight.T)
+        # print(net.up8.weight.T)
         k = k + 1
 
 

@@ -38,7 +38,7 @@ def save_low_high_audio(high_res, low_res, sample_rate):
     path = "low_res.wav"
     torchaudio.save(path, low_res, sample_rate)
     path = "high_res.wav"
-    torchaudio.save(path, high_res, sample_rate)
+    torchaudio.save(path, high_res, int(sample_rate))
     
 
 def data_to_inp_tar(data, device):
@@ -53,7 +53,7 @@ def data_to_inp_tar(data, device):
     high_res = change_res(waveform, sample_rate, high_res_rate)
 
     #  need to make sure the input signal is divisible by 4000 (1/12th)
-    divisions = 512
+    divisions = 1024
     while high_res.shape[1] % divisions != 0:
         # keep removing last element until condition is met
         high_res = high_res[:,0:(high_res.shape[1] - 1)]
@@ -74,6 +74,13 @@ def data_to_inp_tar(data, device):
 
     input = low_res_high_rate.to(device)
     target = high_res.to(device)
+    # print(torch.min(target))
+    # print(torch.max(target))
+
+    # input[input < 0] = -torch.log(input)
+    # input[input < 0] = -torch.log(input)
+    # target = torch.log(-target)
+
     input = torch.reshape(input, (1, 1, -1))
     target = torch.reshape(target, (1, 1, -1))
     return input, target
