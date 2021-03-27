@@ -70,7 +70,7 @@ def data_to_inp_tar(data, device):
     # Upscale from 4000 to 16000 to match sizes (still crunchy, but same size)
     low_res_high_rate = change_res(low_res, low_res_rate, high_res_rate)
 
-    assert(low_res_high_rate.shape[1] == high_res.shape[1])
+    # assert(low_res_high_rate.shape[1] == high_res.shape[1])
    
     # telemetry for given data
     ##########################################################
