@@ -6,14 +6,15 @@ The soundfile module (https://PySoundFile.readthedocs.io/) has to be installed!
 """
 import argparse
 import tempfile
-import queue
 import sys
+from contextlib import ExitStack
 
 import sounddevice as sd
 import soundfile as sf
 import numpy  # Make sure NumPy is loaded before it is used in the callback
 assert numpy  # avoid "imported but unused" message (W0611)
 
+import recorder
 
 def int_or_str(text):
     """Helper function for argument parsing."""
@@ -36,11 +37,11 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     parents=[parser])
 parser.add_argument(
-    'filename', nargs='?', metavar='FILENAME',
+    'filenames', nargs='*',
     help='audio file to store recording to')
 parser.add_argument(
-    '-d', '--device', type=int_or_str,
-    help='input device (numeric ID or substring)')
+    '-d', '--devices', type=int_or_str, nargs='*', metavar='D',
+    help='input devices (numeric ID or substring)')
 parser.add_argument(
     '-r', '--samplerate', type=int, help='sampling rate')
 parser.add_argument(
@@ -49,41 +50,36 @@ parser.add_argument(
     '-t', '--subtype', type=str, help='sound file subtype (e.g. "PCM_24")')
 args = parser.parse_args(remaining)
 
-q = queue.Queue()
-
-
-def callback(indata, frames, time, status):
-    """This is called (from a separate thread) for each audio block."""
-    if status:
-        print(status, file=sys.stderr)
-    q.put(indata.copy())
-
-
 try:
+    if not args.devices:
+        args.devices = [sd.default.device[0]]
     if args.samplerate is None:
-        device_info = sd.query_devices(args.device, 'input')
+        device_info = sd.query_devices(args.devices[0], 'input')
         # soundfile expects an int, sounddevice provides a float:
         args.samplerate = int(device_info['default_samplerate'])
-    if args.filename is None:
-        args.filename = tempfile.mktemp(prefix='delme_rec_unlimited_',
-                                        suffix='.wav', dir='')
+    if not args.filenames:
+        args.filenames = [f'{d}.wav' for d in args.devices]
 
-    # Make sure the file is opened before recording anything:
-
-    d1 = 23
-    d2 = 25
-
-    with sf.SoundFile("good.wav", mode='x', samplerate=args.samplerate,
-                      channels=args.channels, subtype=args.subtype) as file:
-        with sd.InputStream(samplerate=args.samplerate, device=d1,
-                            channels=args.channels, callback=callback):
-            print('#' * 80)
-            print('press Ctrl+C to stop the recording')
-            print('#' * 80)
-            while True:
-                file.write(q.get())
+    files = [sf.SoundFile(fname, mode='w', samplerate=args.samplerate, channels=args.channels, subtype=args.subtype) for fname in args.filenames]
+    
+    
+    recs = [recorder.DataRecorder(device=d, samplerate=args.samplerate, channels=args.channels) for d in args.devices]
+    
+    with ExitStack() as stack:
+        for r, f in zip(recs, files):
+            stack.enter_context(r.stream)
+            stack.enter_context(f)
+            f.write(r.get_pad_to(1.0)) # Sync all recordings at 1.0s
+        
+        print('#' * 80)
+        print('press Ctrl+C to stop the recording')
+        print('#' * 80)
+        
+        while True:
+            for r, f in zip(recs, files):
+                if len(r.buf):
+                    f.write(r.buf.popall())
 except KeyboardInterrupt:
-    print('\nRecording finished: ' + repr(args.filename))
+    print('\nRecordings finished: ' + repr(args.filenames))
     parser.exit(0)
-except Exception as e:
-    parser.exit(type(e).__name__ + ': ' + str(e))
+    
