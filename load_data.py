@@ -90,9 +90,6 @@ def pad_data(output_folder_path):
 
     # print("longest clip:", max_length)
 
-
-
-
 def main():
     ################### INPUTS ###################
     input_folder_path = "./VCTK-Corpus-0.92/wav48_silence_trimmed/p225"
