@@ -4,8 +4,6 @@ from scipy.io import wavfile
 from matplotlib.pyplot import figure
 import numpy as np
 
-
-
 def plot_spectrogram(path):
     sample_rate, samples = wavfile.read(path)
     frequencies, times, spectrogram = signal.spectrogram(samples, sample_rate)
