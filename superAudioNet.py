@@ -8,10 +8,14 @@ import matplotlib.pyplot as plt
 import cv2
 import time
 
+from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear
+from complexPyTorch.complexFunctions import complex_relu, complex_max_pool2d
+
 from torchaudio.datasets import VCTK_092
 import data_loader as dl
 from pixelshuffle1d import PixelShuffle1D, PixelUnshuffle1D
 import audio_low_res_proccessing as alrp
+import stft_conversions as sc
 
 import os
 
@@ -45,11 +49,11 @@ class Net(nn.Module):
         self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6], stride=2)
         self.bottle = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7], stride=2)
 
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.25)
         self.leakyRelu = nn.LeakyReLU(0.2)
         self.pixel_upsample = PixelShuffle1D(scale_factor)
 
-        self.downSampling = [] #np.array([])
+        self.downSampling = []
         self.up1 = nn.Conv1d(n_filters[7], n_filters[6]*2, n_filtersizes[7], padding = n_padding[7])
         self.up2 = nn.Conv1d(n_filters[6]*1, n_filters[5]*2, n_filtersizes[6], padding = n_padding[6])
         self.up3 = nn.Conv1d(n_filters[5]*1, n_filters[4]*2, n_filtersizes[5], padding = n_padding[5])
@@ -58,12 +62,24 @@ class Net(nn.Module):
         self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
         self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
         self.up8 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
-        # self.up9 = nn.Conv1d(n_filters[0]*1, n_filters[0]*2, n_filtersizes[0], padding = n_padding[0])
-        # self.up10 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
-        
-        
-        
-        
+
+
+        # frequency stuff    
+        n_stft_filters = np.intc(np.array([128, 256, 512]) / 4)
+        n_stft_filtersizes = np.array([11, 11, 11])
+        n_stft_padding = np.intc((n_stft_filtersizes - 1) * 0.5)
+
+        self.stft_down1 =  ComplexConv2d(1                , n_stft_filters[0]  , n_stft_filtersizes[0], padding = n_stft_padding[0], stride=2)
+        self.stft_down2 =  ComplexConv2d(n_stft_filters[0], n_stft_filters[1]  , n_stft_filtersizes[1], padding = n_stft_padding[1], stride=2)
+        self.stft_bottle = ComplexConv2d(n_stft_filters[1], n_stft_filters[2]  , n_stft_filtersizes[2], padding = n_stft_padding[2], stride=2)
+        self.stft_up1 =    ComplexConv2d(n_stft_filters[2], n_stft_filters[1]*4, n_stft_filtersizes[2], padding = n_stft_padding[2])
+        self.stft_up2 =    ComplexConv2d(n_stft_filters[1], n_stft_filters[0]*4, n_stft_filtersizes[1], padding = n_stft_padding[1])
+        self.stft_up3 =    ComplexConv2d(n_stft_filters[0], 4                  , n_stft_filtersizes[0], padding = n_stft_padding[0])
+
+        self.pixel_upsample_2d = nn.PixelShuffle(scale_factor)
+
+
+
 
     def forward_downsample(self, x):
         '''
@@ -102,10 +118,7 @@ class Net(nn.Module):
         '''
         Insert caption
         '''
-        # printpixel_upsamplere:",x.shape)
         x = self.pixel_upsample(F.relu(self.dropout(self.up1(x)))) + self.downSampling[7]
-        # print("after shape: ", x.shape)
-        # print("downsample size: ", self.downSampling[7].shape)
         x = self.pixel_upsample(F.relu(self.dropout(self.up2(x)))) + self.downSampling[6]
         x = self.pixel_upsample(F.relu(self.dropout(self.up3(x)))) + self.downSampling[5]
         x = self.pixel_upsample(F.relu(self.dropout(self.up4(x)))) + self.downSampling[4]
@@ -115,22 +128,44 @@ class Net(nn.Module):
         x = self.pixel_upsample((self.up8(x))) + self.downSampling[0]
         # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
         self.downSampling.clear()
-        # x = self.pixel_upsample(F.relu(self.dropout(self.up9(x))))
-        # x = self.pixel_upsample(((self.up10(x))))
+       
         return x
 
-    def resize(self, inp):
-        dims = (inp.shape)
-        inp = torch.reshape(inp, (int(dims[0]), int(dims[1]/2), int(dims[2]*2)))
-        return inp
+    def forward_stft(self, y):
+        '''
+        '''
 
+        y = complex_relu(self.stft_down1(y))
+        y = complex_relu(self.stft_down2(y))
+
+        y = complex_relu(self.stft_bottle(y))
+
+        y = self.pixel_upsample_2d(complex_relu(self.stft_up1(y)))
+        y = self.pixel_upsample_2d(complex_relu(self.stft_up2(y)))
+        y = self.pixel_upsample_2d(self.stft_up3(y))
+
+        return y
+
+    # x = waveform ,y is the stft
     def forward(self, x):
         '''
         Insert caption
         '''
+
+        y = sc.wav2stft(x[0,0], 128)
+        # y = (y)
+        y = y.unsqueeze(0)
+        y = y.unsqueeze(0)
+        y = self.forward_stft(y)
+        y = sc.stft2wav(y[0,0], 128, x.shape[2])
+        y = y.unsqueeze(0)
+        y = y.unsqueeze(0)
+
         x = self.forward_downsample(x)
         x = self.forward_bottleneck(x)
         x = self.forward_upsample(x)
+
+        x = x+y # FuSiOn Layer
 
         return x
 
