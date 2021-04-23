@@ -5,7 +5,9 @@ import os
 import random
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.nn.parallel
+import torchaudio
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
@@ -17,74 +19,21 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
 
-# Set random seed for reproducibility
-manualSeed = 999
-#manualSeed = random.randint(1, 10000) # use if you want new results
-print("Random Seed: ", manualSeed)
-random.seed(manualSeed)
-torch.manual_seed(manualSeed)
+import cv2
+import time
+
+from torchaudio.datasets import VCTK_092
+import data_loader as dl
+from pixelshuffle1d import PixelShuffle1D, PixelUnshuffle1D
+import audio_low_res_proccessing as alrp
 
 
-######################################################################
-# Inputs
-# ------
-# 
-# Let’s define some inputs for the run:
-# 
-# -  **dataroot** - the path to the root of the dataset folder. We will
-#    talk more about the dataset in the next section
-# -  **workers** - the number of worker threads for loading the data with
-#    the DataLoader
-# -  **batch_size** - the batch size used in training. The DCGAN paper
-#    uses a batch size of 128
-# -  **image_size** - the spatial size of the images used for training.
-#    This implementation defaults to 64x64. If another size is desired,
-#    the structures of D and G must be changed. See
-#    `here <https://github.com/pytorch/examples/issues/70>`__ for more
-#    details
-# -  **nc** - number of color channels in the input images. For color
-#    images this is 3
-# -  **nz** - length of latent vector
-# -  **ngf** - relates to the depth of feature maps carried through the
-#    generator
-# -  **ndf** - sets the depth of feature maps propagated through the
-#    discriminator
-# -  **num_epochs** - number of training epochs to run. Training for
-#    longer will probably lead to better results but will also take much
-#    longer
-# -  **lr** - learning rate for training. As described in the DCGAN paper,
-#    this number should be 0.0002
-# -  **beta1** - beta1 hyperparameter for Adam optimizers. As described in
-#    paper, this number should be 0.5
-# -  **ngpu** - number of GPUs available. If this is 0, code will run in
-#    CPU mode. If this number is greater than 0 it will run on that number
-#    of GPUs
-# 
-
-# Root directory for dataset
-dataroot = "data/celeba"
 
 # Number of workers for dataloader
 workers = 2
 
 # Batch size during training
 batch_size = 128
-
-# Spatial size of training images. All images will be resized to this
-#   size using a transformer.
-image_size = 64
-
-# Number of channels in the training images. For color images this is 3
-nc = 3
-
-# Size of z latent vector (i.e. size of generator input)
-nz = 100
-
-# Size of feature maps in generator
-ngf = 64
-
-# Size of feature maps in discriminator
-ndf = 64
 
 # Number of training epochs
 num_epochs = 5
@@ -96,62 +45,18 @@ lr = 0.0002
 beta1 = 0.5
 
 # Number of GPUs available. Use 0 for CPU mode.
-ngpu = 1
+ngpu = 0
 
-
-######################################################################
-# Data
-# ----
-# 
-# In this tutorial we will use the `Celeb-A Faces
-# dataset <http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html>`__ which can
-# be downloaded at the linked site, or in `Google
-# Drive <https://drive.google.com/drive/folders/0B7EVK8r0v71pTUZsaXdaSnZBZzg>`__.
-# The dataset will download as a file named *img_align_celeba.zip*. Once
-# downloaded, create a directory named *celeba* and extract the zip file
-# into that directory. Then, set the *dataroot* input for this notebook to
-# the *celeba* directory you just created. The resulting directory
-# structure should be:
-# 
-# ::
-# 
-#    /path/to/celeba
-#        -> img_align_celeba  
-#            -> 188242.jpg
-#            -> 173822.jpg
-#            -> 284702.jpg
-#            -> 537394.jpg
-#               ...
-# 
-# This is an important step because we will be using the ImageFolder
-# dataset class, which requires there to be subdirectories in the
-# dataset’s root folder. Now, we can create the dataset, create the
-# dataloader, set the device to run on, and finally visualize some of the
-# training data.
-# 
-
-# We can use an image folder dataset the way we have it setup.
-# Create the dataset
-dataset = dset.ImageFolder(root=dataroot,
-                           transform=transforms.Compose([
-                               transforms.Resize(image_size),
-                               transforms.CenterCrop(image_size),
-                               transforms.ToTensor(),
-                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                           ]))
-# Create the dataloader
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         shuffle=True, num_workers=workers)
-
+vctk_p255 = dl.VCTKCroppedDataSet(root_dir='./')
+# Split into training and validation subsets
+train_size = int(0.85 * len(vctk_p255))
+valid_size = len(vctk_p255) - train_size
+train_dataset, valid_dataset = torch.utils.data.random_split(vctk_p255, [train_size, valid_size])
+# VCTK_data = torchaudio.datasets.VCTK_092('./', download=False) # old non-custom dataloader
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True)
+valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=True)
 # Decide which device we want to run on
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-
-# Plot some training images
-real_batch = next(iter(dataloader))
-plt.figure(figsize=(8,8))
-plt.axis("off")
-plt.title("Training Images")
-plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(),(1,2,0)))
 
 
 
@@ -216,34 +121,110 @@ def weights_init(m):
 # Generator Code
 
 class Generator(nn.Module):
-    def __init__(self, ngpu):
-        super(Generator, self).__init__()
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is Z, going into a convolution
-            nn.ConvTranspose2d( nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d( ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d( ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # state size. (nc) x 64 x 64
-        )
+    def __init__(self):
+        super(Net, self).__init__()
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 4)
+        self.n_filters = n_filters
+        n_filtersizes = np.array([7, 7, 7, 7, 7, 7, 7, 7, 7])
+        self.n_filtersizes = n_filtersizes
+        n_padding = np.intc((n_filtersizes - 1) * 0.5)
+        scale_factor = 2
 
-    def forward(self, input):
-        return self.main(input)
+        #torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros')
+
+        self.down1 = nn.Conv1d(1, n_filters[0], n_filtersizes[0], padding = n_padding[0], stride=2)
+        self.down2 = nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1], stride=2)
+        self.down3 = nn.Conv1d(n_filters[1], n_filters[2], n_filtersizes[2], padding = n_padding[2], stride=2)
+        self.down4 = nn.Conv1d(n_filters[2], n_filters[3], n_filtersizes[3], padding = n_padding[3], stride=2)
+        self.down5 = nn.Conv1d(n_filters[3], n_filters[4], n_filtersizes[4], padding = n_padding[4], stride=2)
+        self.down6 = nn.Conv1d(n_filters[4], n_filters[5], n_filtersizes[5], padding = n_padding[5], stride=2)
+        self.down7 = nn.Conv1d(n_filters[5], n_filters[6], n_filtersizes[6], padding = n_padding[6], stride=2)
+        self.bottle = nn.Conv1d(n_filters[6], n_filters[7], n_filtersizes[7], padding = n_padding[7], stride=2)
+
+        self.dropout = nn.Dropout(0.3)
+        self.leakyRelu = nn.LeakyReLU(0.2)
+        self.pixel_upsample = PixelShuffle1D(scale_factor)
+
+        self.downSampling = [] #np.array([])
+        self.up1 = nn.Conv1d(n_filters[7], n_filters[6]*2, n_filtersizes[7], padding = n_padding[7])
+        self.up2 = nn.Conv1d(n_filters[6]*1, n_filters[5]*2, n_filtersizes[6], padding = n_padding[6])
+        self.up3 = nn.Conv1d(n_filters[5]*1, n_filters[4]*2, n_filtersizes[5], padding = n_padding[5])
+        self.up4 = nn.Conv1d(n_filters[4]*1, n_filters[3]*2, n_filtersizes[4], padding = n_padding[4])
+        self.up5 = nn.Conv1d(n_filters[3]*1, n_filters[2]*2, n_filtersizes[3], padding = n_padding[3])
+        self.up6 = nn.Conv1d(n_filters[2]*1, n_filters[1]*2, n_filtersizes[2], padding = n_padding[2])
+        self.up7 = nn.Conv1d(n_filters[1]*1, n_filters[0]*2, n_filtersizes[1], padding = n_padding[1])
+        self.up8 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
+        # self.up9 = nn.Conv1d(n_filters[0]*1, n_filters[0]*2, n_filtersizes[0], padding = n_padding[0])
+        # self.up10 = nn.Conv1d(n_filters[0]*1, 2, n_filtersizes[0], padding = n_padding[0])
+    
+    def forward_downsample(self, x):
+        '''
+        Insert caption
+        '''
+        
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down1(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down2(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down3(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down4(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down5(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down6(x))
+        self.downSampling.append(x)
+        x = self.leakyRelu(self.down7(x))
+        self.downSampling.append(x)
+
+        return x
+
+    def forward_bottleneck(self, x):
+        '''
+        Insert caption
+        '''
+        x = self.bottle(x)
+        x = self.dropout(x)
+        x = self.leakyRelu(x)
+        
+        return x
+
+    def forward_upsample(self, x):
+        '''
+        Insert caption
+        '''
+        # printpixel_upsamplere:",x.shape)
+        x = self.pixel_upsample(F.relu(self.dropout(self.up1(x)))) + self.downSampling[7]
+        # print("after shape: ", x.shape)
+        # print("downsample size: ", self.downSampling[7].shape)
+        x = self.pixel_upsample(F.relu(self.dropout(self.up2(x)))) + self.downSampling[6]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up3(x)))) + self.downSampling[5]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up4(x)))) + self.downSampling[4]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up5(x)))) + self.downSampling[3]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up6(x)))) + self.downSampling[2]
+        x = self.pixel_upsample(F.relu(self.dropout(self.up7(x)))) + self.downSampling[1]
+        x = self.pixel_upsample((self.up8(x))) + self.downSampling[0]
+        # if you include this then your output is the exact same as input. commented out you get 0 as answer (exploding/vanishing gradient?)
+        self.downSampling.clear()
+        # x = self.pixel_upsample(F.relu(self.dropout(self.up9(x))))
+        # x = self.pixel_upsample(((self.up10(x))))
+        return x
+
+    def resize(self, inp):
+        dims = (inp.shape)
+        inp = torch.reshape(inp, (int(dims[0]), int(dims[1]/2), int(dims[2]*2)))
+        return inp
+
+    def forward(self, x):
+        '''
+        Insert caption
+        '''
+        x = self.forward_downsample(x)
+        x = self.forward_bottleneck(x)
+        x = self.forward_upsample(x)
+
+        return x
 
 
 ######################################################################
@@ -292,25 +273,33 @@ print(netG)
 class Discriminator(nn.Module):
     def __init__(self, ngpu):
         super(Discriminator, self).__init__()
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512]) / 4)
+        n_filtersizes = np.array([7, 7, 7, 7, 7])
+        n_padding = np.intc((n_filtersizes - 1) * 0.5)
+
         self.ngpu = ngpu
         self.main = nn.Sequential(
-            # input is (nc) x 64 x 64
-            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+            # input is 1 X 16000*30
+            nn.Conv1d(1,n_filtersizes[0], padding = n_padding[0], stride=2),
             nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
+            nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1], stride=2),
+            nn.BatchNorm2d(n_filters[1]),
             nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
+            nn.Conv1d(n_filters[1], n_filters[2], n_filtersizes[2], padding = n_padding[2], stride=2),
+            nn.BatchNorm2d(n_filters[2]),
             nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
+            nn.Conv1d(n_filters[2], n_filters[3], n_filtersizes[3], padding = n_padding[3], stride=2),
+            nn.BatchNorm2d(n_filters[3]),
             nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Conv1d(n_filters[3], n_filters[4], n_filtersizes[4], padding = n_padding[4], stride=2),
             nn.Sigmoid()
         )
 
@@ -587,20 +576,3 @@ HTML(ani.to_jshtml())
 # Finally, lets take a look at some real images and fake images side by
 # side.
 # 
-
-# Grab a batch of real images from the dataloader
-real_batch = next(iter(dataloader))
-
-# Plot the real images
-plt.figure(figsize=(15,15))
-plt.subplot(1,2,1)
-plt.axis("off")
-plt.title("Real Images")
-plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=5, normalize=True).cpu(),(1,2,0)))
-
-# Plot the fake images from the last epoch
-plt.subplot(1,2,2)
-plt.axis("off")
-plt.title("Fake Images")
-plt.imshow(np.transpose(img_list[-1],(1,2,0)))
-plt.show()
