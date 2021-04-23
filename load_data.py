@@ -160,9 +160,9 @@ def main():
     output_folder_path = "./data/p225" # only using this specific voice for now
     mic_str = "mic2" # alternative "mic1"
     high_resolution_sample_rate = 16000
-    low_resolution_sample_rate = 16000
+    low_resolution_sample_rate = 4000
     rir_file = None #"eric-rir.flac"
-    noise_file = "eric-noise.flac"
+    noise_file = None #"eric-noise.flac"
     snr_db = 8
     codec = None # Currently causes a change in shape
     ################### INPUTS ###################
