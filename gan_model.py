@@ -45,7 +45,7 @@ lr = 0.0002
 beta1 = 0.5
 
 # Number of GPUs available. Use 0 for CPU mode.
-ngpu = 0
+ngpu = 1
 
 vctk_p255 = dl.VCTKCroppedDataSet(root_dir='data/p225')
 # Split into training and validation subsets
@@ -284,23 +284,26 @@ class Discriminator(nn.Module):
 
         self.ngpu = ngpu
         self.main = nn.Sequential(
+            # self.down1 = nn.Conv1d(1, n_filters[0], n_filtersizes[0], padding = n_padding[0], stride=2)
+            # self.down2 = nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1], stride=2)
+
             # input is 1 X 16000*30
-            nn.Conv1d(1,n_filtersizes[0], padding = n_padding[0], stride=2),
+            nn.Conv1d(1,n_filters[0], n_filtersizes[0], padding = n_padding[0], stride=2),
             nn.LeakyReLU(0.2, inplace=True),
             
             # state size. (ndf) x 32 x 32
             nn.Conv1d(n_filters[0], n_filters[1], n_filtersizes[1], padding = n_padding[1], stride=2),
-            nn.BatchNorm2d(n_filters[1]),
+            nn.BatchNorm1d(n_filters[1]),
             nn.LeakyReLU(0.2, inplace=True),
             
             # state size. (ndf*2) x 16 x 16
             nn.Conv1d(n_filters[1], n_filters[2], n_filtersizes[2], padding = n_padding[2], stride=2),
-            nn.BatchNorm2d(n_filters[2]),
+            nn.BatchNorm1d(n_filters[2]),
             nn.LeakyReLU(0.2, inplace=True),
             
             # state size. (ndf*4) x 8 x 8
             nn.Conv1d(n_filters[2], n_filters[3], n_filtersizes[3], padding = n_padding[3], stride=2),
-            nn.BatchNorm2d(n_filters[3]),
+            nn.BatchNorm1d(n_filters[3]),
             nn.LeakyReLU(0.2, inplace=True),
             
             # state size. (ndf*8) x 4 x 4
@@ -318,7 +321,8 @@ class Discriminator(nn.Module):
 # 
 
 # Create the Discriminator
-netD = Discriminator(ngpu).to(device)
+netD = Discriminator(ngpu)
+netD.to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
@@ -370,7 +374,7 @@ criterion = nn.BCELoss()
 
 # Create batch of latent vectors that we will use to visualize
 #  the progression of the generator
-fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+# fixed_noise = torch.randn(64, nz, 1, 1, device=device)
 
 # Establish convention for real and fake labels during training
 real_label = 1.
@@ -461,19 +465,24 @@ print("Starting Training Loop...")
 # For each epoch
 for epoch in range(num_epochs):
     # For each batch in the dataloader
-    for i, data in enumerate(dataloader, 0):
-        
+    for i, data in enumerate(train_loader):
         ############################
         # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
         ###########################
         ## Train with all-real batch
         netD.zero_grad()
         # Format batch
-        real_cpu = data[0].to(device)
-        b_size = real_cpu.size(0)
-        label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
+        # real_cpu = data[0].to(device)
+
+        input = data["low_res"].to(device)
+        target = data["high_res"].to(device)
+        output = netD(target)#.view(-1)
+        # print("output shape: ", output.shape)
+        b_size = output.size()
+        # print("bsize: ", b_size)
+        label = torch.full(b_size, real_label, dtype=torch.float, device=device)
         # Forward pass real batch through D
-        output = netD(real_cpu).view(-1)
+        
         # Calculate loss on all-real batch
         errD_real = criterion(output, label)
         # Calculate gradients for D in backward pass
@@ -482,12 +491,12 @@ for epoch in range(num_epochs):
 
         ## Train with all-fake batch
         # Generate batch of latent vectors
-        noise = torch.randn(b_size, nz, 1, 1, device=device)
+        #noise = torch.randn(b_size, nz, 1, 1, device=device)
         # Generate fake image batch with G
-        fake = netG(noise)
+        fake = netG(input)
         label.fill_(fake_label)
         # Classify all fake batch with D
-        output = netD(fake.detach()).view(-1)
+        output = netD(fake.detach())#.view(-1)
         # Calculate D's loss on the all-fake batch
         errD_fake = criterion(output, label)
         # Calculate the gradients for this batch
@@ -504,7 +513,7 @@ for epoch in range(num_epochs):
         netG.zero_grad()
         label.fill_(real_label)  # fake labels are real for generator cost
         # Since we just updated D, perform another forward pass of all-fake batch through D
-        output = netD(fake).view(-1)
+        output = netD(fake)#.view(-1)
         # Calculate G's loss based on this output
         errG = criterion(output, label)
         # Calculate gradients for G
@@ -516,7 +525,7 @@ for epoch in range(num_epochs):
         # Output training stats
         if i % 50 == 0:
             print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                  % (epoch, num_epochs, i, len(dataloader),
+                  % (epoch, num_epochs, i, len(train_loader),
                      errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
         
         # Save Losses for plotting later
@@ -524,10 +533,10 @@ for epoch in range(num_epochs):
         D_losses.append(errD.item())
         
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
-            with torch.no_grad():
-                fake = netG(fixed_noise).detach().cpu()
-            img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+        # if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
+        #     with torch.no_grad():
+        #         fake = netG(fixed_noise).detach().cpu()
+        #     img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
             
         iters += 1
 
@@ -556,28 +565,10 @@ plt.ylabel("Loss")
 plt.legend()
 plt.show()
 
-
-######################################################################
-# **Visualization of G’s progression**
-# 
-# Remember how we saved the generator’s output on the fixed_noise batch
-# after every epoch of training. Now, we can visualize the training
-# progression of G with an animation. Press the play button to start the
-# animation.
-# 
-
-#%%capture
-fig = plt.figure(figsize=(8,8))
-plt.axis("off")
-ims = [[plt.imshow(np.transpose(i,(1,2,0)), animated=True)] for i in img_list]
-ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
-
-HTML(ani.to_jshtml())
-
-
 ######################################################################
 # **Real Images vs. Fake Images**
 # 
 # Finally, lets take a look at some real images and fake images side by
 # side.
 # 
+
