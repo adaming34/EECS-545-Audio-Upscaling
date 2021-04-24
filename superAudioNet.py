@@ -65,16 +65,24 @@ class Net(nn.Module):
 
 
         # frequency stuff    
-        n_stft_filters = np.intc(np.array([128, 256, 512]) / 4)
-        n_stft_filtersizes = np.array([11, 11, 11])
+        n_stft_filters = np.intc(np.array([128, 256, 512, 512, 512, 512]) / 4)
+        n_stft_filtersizes = np.array([7, 7, 7, 7, 7, 7])
         n_stft_padding = np.intc((n_stft_filtersizes - 1) * 0.5)
+        self.stft_residuals = []
 
-        self.stft_down1 =  ComplexConv2d(1                , n_stft_filters[0]  , n_stft_filtersizes[0], padding = n_stft_padding[0], stride=2)
-        self.stft_down2 =  ComplexConv2d(n_stft_filters[0], n_stft_filters[1]  , n_stft_filtersizes[1], padding = n_stft_padding[1], stride=2)
-        self.stft_bottle = ComplexConv2d(n_stft_filters[1], n_stft_filters[2]  , n_stft_filtersizes[2], padding = n_stft_padding[2], stride=2)
-        self.stft_up1 =    ComplexConv2d(n_stft_filters[2], n_stft_filters[1]*4, n_stft_filtersizes[2], padding = n_stft_padding[2])
-        self.stft_up2 =    ComplexConv2d(n_stft_filters[1], n_stft_filters[0]*4, n_stft_filtersizes[1], padding = n_stft_padding[1])
-        self.stft_up3 =    ComplexConv2d(n_stft_filters[0], 4                  , n_stft_filtersizes[0], padding = n_stft_padding[0])
+        self.stft_down1 =  ComplexConv2d(1                , n_stft_filters[0]  , (1,n_stft_filtersizes[0]), padding = (0,n_stft_padding[0]), stride=2)
+        self.stft_down2 =  ComplexConv2d(n_stft_filters[0], n_stft_filters[1]  , (1,n_stft_filtersizes[1]), padding = (0,n_stft_padding[1]), stride=2)
+        self.stft_down3 =  ComplexConv2d(n_stft_filters[1], n_stft_filters[2]  , (1,n_stft_filtersizes[2]), padding = (0,n_stft_padding[2]), stride=2)
+        self.stft_down4 =  ComplexConv2d(n_stft_filters[2], n_stft_filters[3]  , (1,n_stft_filtersizes[3]), padding = (0,n_stft_padding[3]), stride=2)
+        self.stft_down5 =  ComplexConv2d(n_stft_filters[3], n_stft_filters[4]  , (1,n_stft_filtersizes[4]), padding = (0,n_stft_padding[4]), stride=2)
+        self.stft_down6 =  ComplexConv2d(n_stft_filters[4], n_stft_filters[5]  , (1,n_stft_filtersizes[5]), padding = (0,n_stft_padding[5]), stride=2)
+        
+        self.stft_up1 =    ComplexConv2d(n_stft_filters[5], n_stft_filters[4]*2, (1,n_stft_filtersizes[5]), padding = (0,n_stft_padding[5]))
+        self.stft_up2 =    ComplexConv2d(n_stft_filters[4], n_stft_filters[3]*2, (1,n_stft_filtersizes[4]), padding = (0,n_stft_padding[4]))
+        self.stft_up3 =    ComplexConv2d(n_stft_filters[3], n_stft_filters[2]*2, (1,n_stft_filtersizes[3]), padding = (0,n_stft_padding[3]))
+        self.stft_up4 =    ComplexConv2d(n_stft_filters[2], n_stft_filters[1]*2, (1,n_stft_filtersizes[2]), padding = (0,n_stft_padding[2]))
+        self.stft_up5 =    ComplexConv2d(n_stft_filters[1], n_stft_filters[0]*2, (1,n_stft_filtersizes[1]), padding = (0,n_stft_padding[1]))
+        self.stft_up6 =    ComplexConv2d(n_stft_filters[0], 2                  , (1,n_stft_filtersizes[0]), padding = (0,n_stft_padding[0]))
 
         self.pixel_upsample_2d = nn.PixelShuffle(scale_factor)
 
@@ -134,15 +142,27 @@ class Net(nn.Module):
     def forward_stft(self, y):
         '''
         '''
-
+        self.stft_residuals.append(y)
         y = complex_relu(self.stft_down1(y))
+        self.stft_residuals.append(y)
         y = complex_relu(self.stft_down2(y))
+        self.stft_residuals.append(y)
+        y = complex_relu(self.stft_down3(y))
+        self.stft_residuals.append(y)
+        y = complex_relu(self.stft_down4(y))
+        # self.stft_residuals.append(y)
+        # y = complex_relu(self.stft_down5(y))
+        # self.stft_residuals.append(y)
+        # y = complex_relu(self.stft_down6(y))
+        # self.stft_residuals.append(y)
 
-        y = complex_relu(self.stft_bottle(y))
-
-        y = self.pixel_upsample_2d(complex_relu(self.stft_up1(y)))
-        y = self.pixel_upsample_2d(complex_relu(self.stft_up2(y)))
-        y = self.pixel_upsample_2d(self.stft_up3(y))
+        # y = self.pixel_upsample(complex_relu(self.stft_up1(y)).squeeze(2)).unsqueeze(2) + self.stft_residuals[5]
+        # y = self.pixel_upsample(complex_relu(self.stft_up2(y)).squeeze(2)).unsqueeze(2) + self.stft_residuals[4]
+        y = self.pixel_upsample(complex_relu(self.stft_up3(y)).squeeze(2)).unsqueeze(2) + self.stft_residuals[3]
+        y = self.pixel_upsample(complex_relu(self.stft_up4(y)).squeeze(2)).unsqueeze(2) + self.stft_residuals[2]
+        y = self.pixel_upsample(complex_relu(self.stft_up5(y)).squeeze(2)).unsqueeze(2) + self.stft_residuals[1]
+        y = self.pixel_upsample(self.stft_up6(y).squeeze(2)).unsqueeze(2)               + self.stft_residuals[0]
+        self.stft_residuals.clear()
 
         return y
 
@@ -152,20 +172,26 @@ class Net(nn.Module):
         Insert caption
         '''
 
-        y = sc.wav2stft(x[0,0], 128)
-        # y = (y)
-        y = y.unsqueeze(0)
-        y = y.unsqueeze(0)
-        y = self.forward_stft(y)
-        y = sc.stft2wav(y[0,0], 128, x.shape[2])
-        y = y.unsqueeze(0)
-        y = y.unsqueeze(0)
+        # y = sc.wav2stft(x[0,0], 128)
+        # # y = (y)
+        # y = y.unsqueeze(0)
+        # y = y.unsqueeze(0)
+        # y = self.forward_stft(y)
+        # y = sc.stft2wav(y[0,0], 128, x.shape[2])
+        # y = y.unsqueeze(0)
+        # y = y.unsqueeze(0)
+
+        # s = sc.fft(x)
+        # s = s.unsqueeze(0)
+        # s = self.forward_stft(s)
+        # s = sc.ifft(s, x.shape[2])
+        # s = torch.view_as_real(s)[0,:,:,:,0]    
 
         x = self.forward_downsample(x)
         x = self.forward_bottleneck(x)
         x = self.forward_upsample(x)
 
-        x = x+y # FuSiOn Layer
+        x = x#+s # FuSiOn Layer
 
         return x
 
