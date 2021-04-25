@@ -189,25 +189,8 @@ def main():
             optimizer.step()
  
             itr_train = itr_train + 1
-
             del loss, output
         
-        # GO THROUGH ALL VALIDATION
-        net.eval()
-        itr_valid = 0
-        for data in valid_loader:
-            input = data["low_res"].to(device)
-            target = data["high_res"].to(device)
-
-            with torch.no_grad():
-                output = net(input)
-                loss = criterion(output, target)
-                valid_loss += loss.item()
-
-            itr_valid = itr_valid + 1
-
-            del loss, output
-
         # print('------------------------------------------')
         print('EPOCH:', k+1)
         print('TRAINING LOSS:  ', round(training_loss/itr_train, 10))

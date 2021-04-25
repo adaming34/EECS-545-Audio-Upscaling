@@ -47,16 +47,19 @@ beta1 = 0.5
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 0
 
-vctk_p255 = dl.VCTKCroppedDataSet(root_dir='./')
+vctk_p255 = dl.VCTKCroppedDataSet(root_dir='data/p225')
 # Split into training and validation subsets
 train_size = int(0.85 * len(vctk_p255))
 valid_size = len(vctk_p255) - train_size
 train_dataset, valid_dataset = torch.utils.data.random_split(vctk_p255, [train_size, valid_size])
-# VCTK_data = torchaudio.datasets.VCTK_092('./', download=False) # old non-custom dataloader
+#VCTK_data = torchaudio.datasets.VCTK_092('data/wav48_silence_trimmed', download=False) # old non-custom dataloader
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True)
 valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=True)
+
 # Decide which device we want to run on
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+
+
 
 
 
@@ -122,7 +125,7 @@ def weights_init(m):
 
 class Generator(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(Generator, self).__init__()
         n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 4)
         self.n_filters = n_filters
         n_filtersizes = np.array([7, 7, 7, 7, 7, 7, 7, 7, 7])
@@ -234,7 +237,9 @@ class Generator(nn.Module):
 # 
 
 # Create the generator
-netG = Generator(ngpu).to(device)
+# Train
+netG = Generator()
+netG.to(device)
 
 # Handle multi-gpu if desired
 if (device.type == 'cuda') and (ngpu > 1):
