@@ -37,7 +37,20 @@ def change_sample_rate(input_wave, input_sample_rate, output_sample_rate):
 
 # Applies a sound codec to compress the audio in some manner
 def apply_codec(input_wave, sample_rate, codec):
-    return torchaudio.functional.apply_codec(input_wave, sample_rate, codec)
+    coded = torchaudio.functional.apply_codec(input_wave, sample_rate, **codec)
+    
+    dur = input_wave.shape[1] / sample_rate
+    code_sr = (int(coded.shape[1]/dur) // 1000) * 1000 # Round to nearest 1000
+    
+    
+    resized = change_sample_rate(coded, code_sr, sample_rate)
+    
+    if resized.shape[1] < input_wave.shape[1]:
+        resized = nn.functional.pad(resized, (0, input_wave.shape[1] - resized.shape[1]))
+    else:
+        resized = resized[:, :input_wave.shape[1]]
+    
+    return resized
 
 # Simulates noise and room reverb
 def decrease_quality(input_wave, sample_rate, rir=None, noise=None, snr=16, low_sample_rate=None, codec=None):
@@ -160,11 +173,12 @@ def main():
     output_folder_path = "./data/p225" # only using this specific voice for now
     mic_str = "mic2" # alternative "mic1"
     high_resolution_sample_rate = 16000
-    low_resolution_sample_rate = 4000
+    low_resolution_sample_rate = 16000
     rir_file = None #"eric-rir.flac"
     noise_file = None #"eric-noise.flac"
     snr_db = 8
-    codec = None # Currently causes a change in shape
+    codec = {'format': "mp3", "compression": 8.0} #<kbps>.<secret parameter i dont understand 0-10>
+    #codec = {'format': 'gsm'} # Currently causes a change in shape
     ################### INPUTS ###################
 
     # make direcotry if it doesn't exist
