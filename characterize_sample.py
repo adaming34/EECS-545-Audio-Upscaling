@@ -7,6 +7,8 @@ import os
 import sys
 import math
 import matplotlib.pyplot as plt
+from matplotlib import cm
+from matplotlib.colors import ListedColormap
 
 def calc_mse(original, sample):
     loss = nn.MSELoss()
@@ -20,17 +22,30 @@ def stft(sample, **kwargs):
     return torchaudio.transforms.Spectrogram(**kwargs)(sample)
 
 def calc_lsd(original, sample):
-    errs = stft(sample).log2()[0].numpy() - stft(original).log2()[0].numpy()
-    return ((errs**2).mean(axis=1)**0.5).mean(axis=0)
+    sample_ft = stft(sample)[0]
+    orig_ft = stft(original)[0]
+    
+    mask = orig_ft > 0
+    mask = np.all(mask.numpy(), axis=0)
+    sample_ft = sample_ft[:, mask]
+    orig_ft = orig_ft[:, mask]
+    
+    errs = 2*(sample_ft.log10()).numpy() - 2*(orig_ft.log10()).numpy()
+    return ((errs**2).mean(axis=0)**0.5).mean(axis=0)
 
 def spectrogram(sample, title='', sr=16000):
+    viridis = cm.get_cmap('viridis', 256)
+    colors = viridis(np.linspace(0, 1, 256))
+    colors[0, :] = np.array([0. , 0., 0., 0.])
+    cmap = ListedColormap(colors)
     specgram = stft(sample)
     plt.figure()
     ex = (0, sample.shape[1] / sr, 0, sr/2)
-    plt.imshow(specgram.log2()[0,:,:].numpy(), aspect='auto', origin='lower', extent=ex)
+    plt.imshow(10*specgram.log10()[0,:,:].numpy(), aspect='auto', origin='lower', extent=ex, cmap=cmap, vmin=-60, vmax=20)
     plt.xlabel('time (s)')
     plt.ylabel('frequency (Hz)')
     plt.title(title)
+    cbar = plt.colorbar(label='Intensity (dB)')
     plt.show()
 
 def main():
@@ -38,6 +53,8 @@ def main():
     sample_files = sys.argv[2:]
     
     gt, sr = torchaudio.load(gt_file)
+    
+    spectrogram(gt, title='Ground Truth', sr=sr)
     
     print("          \tpsnr\tlsd")
     for filename in sample_files:
@@ -52,7 +69,9 @@ def main():
         
         print(f"{filename}:\t{psnr:.3f}\t{lsd:.3f}")
         
-        spectrogram(sample[:, :length], title=filename, sr=sr)
+        name = ' '.join(filename.split('/')[-1].split('.')[:-1])
+        
+        spectrogram(sample[:, :length], title=name, sr=sr)
 
 
 if __name__ == '__main__':
