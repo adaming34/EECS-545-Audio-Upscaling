@@ -36,10 +36,10 @@ workers = 2
 batch_size = 128
 
 # Number of training epochs
-num_epochs = 5
+num_epochs = 25
 
 # Learning rate for optimizers
-lr = 0.0002
+lr = 0.0001
 
 # Beta1 hyperparam for Adam optimizers
 beta1 = 0.5
@@ -58,6 +58,7 @@ valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=
 
 # Decide which device we want to run on
 device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+print("device: ", device)
 
 
 
@@ -126,9 +127,11 @@ def weights_init(m):
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512]) / 4)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512, 512, 512, 512])/4)
         self.n_filters = n_filters
         n_filtersizes = np.array([7, 7, 7, 7, 7, 7, 7, 7, 7])
+        # n_filtersizes = np.array([65, 33, 17,  9,  9,  9, 9, 9, 9])
+        # n_filtersizes = np.array([9, 9, 9, 9, 9, 9, 9, 9, 9])
         self.n_filtersizes = n_filtersizes
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
         scale_factor = 2
@@ -278,8 +281,10 @@ print(netG)
 class Discriminator(nn.Module):
     def __init__(self, ngpu):
         super(Discriminator, self).__init__()
-        n_filters = np.intc(np.array([128, 384, 512, 512, 512]) / 4)
+        n_filters = np.intc(np.array([128, 384, 512, 512, 512])/4)
         n_filtersizes = np.array([7, 7, 7, 7, 7])
+        # n_filtersizes = np.array([65, 33, 17,  9,  9])#,  9, 9, 9, 9])
+        # n_filtersizes = np.array([9, 9, 9, 9, 9])
         n_padding = np.intc((n_filtersizes - 1) * 0.5)
 
         self.ngpu = ngpu
@@ -371,6 +376,7 @@ print(netD)
 
 # Initialize BCELoss function
 criterion = nn.BCELoss()
+criterionL2 = nn.MSELoss()
 
 # Create batch of latent vectors that we will use to visualize
 #  the progression of the generator
@@ -381,8 +387,8 @@ real_label = 1.
 fake_label = 0.
 
 # Setup Adam optimizers for both G and D
-optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
-optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
+optimizerD = optim.Adam(netD.parameters(), lr=lr)#, betas=(beta1, 0.999))
+optimizerG = optim.Adam(netG.parameters(), lr=lr)#, betas=(beta1, 0.999))
 
 
 ######################################################################
@@ -460,6 +466,7 @@ img_list = []
 G_losses = []
 D_losses = []
 iters = 0
+PATH = './superAudioNetGAN.pth'
 
 print("Starting Training Loop...")
 # For each epoch
@@ -485,6 +492,7 @@ for epoch in range(num_epochs):
         
         # Calculate loss on all-real batch
         errD_real = criterion(output, label)
+        # errD_real = criterionL2(output, target)
         # Calculate gradients for D in backward pass
         errD_real.backward()
         D_x = output.mean().item()
@@ -499,6 +507,7 @@ for epoch in range(num_epochs):
         output = netD(fake.detach())#.view(-1)
         # Calculate D's loss on the all-fake batch
         errD_fake = criterion(output, label)
+        # errD_fake = criterionL2(output, target)
         # Calculate the gradients for this batch
         errD_fake.backward()
         D_G_z1 = output.mean().item()
@@ -516,6 +525,7 @@ for epoch in range(num_epochs):
         output = netD(fake)#.view(-1)
         # Calculate G's loss based on this output
         errG = criterion(output, label)
+        # errG = criterionL2(output, target)
         # Calculate gradients for G
         errG.backward()
         D_G_z2 = output.mean().item()
@@ -539,6 +549,7 @@ for epoch in range(num_epochs):
         #     img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
             
         iters += 1
+    torch.save(netG.state_dict(), PATH)
 
 
 ######################################################################
@@ -572,3 +583,14 @@ plt.show()
 # side.
 # 
 
+with torch.no_grad():     
+    data = torchaudio.load("./VCTK-Corpus-0.92/wav48_silence_trimmed/p225/p225_030_mic2.flac")
+    low_res_input, actual_high_res = alrp.data_to_inp_tar(data, device)
+    high_res_output = netG(low_res_input)
+    actual_high_res = torch.reshape(actual_high_res.cpu().detach(),(1,-1))
+    high_res_output = torch.reshape(high_res_output.cpu().detach(),(1,-1))
+    low_res_input = torch.reshape(low_res_input.cpu().detach(),(1,-1))
+    alrp.save_low_high_audio(high_res_output, low_res_input, 16000)
+    alrp.plot_spectrogram(high_res_output, 16000)
+    alrp.plot_spectrogram(low_res_input, 16000)
+    alrp.plot_spectrogram(actual_high_res, 16000)
