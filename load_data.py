@@ -39,18 +39,19 @@ def change_sample_rate(input_wave, input_sample_rate, output_sample_rate):
 def apply_codec(input_wave, sample_rate, codec):
     coded = torchaudio.functional.apply_codec(input_wave, sample_rate, **codec)
     
-    dur = input_wave.shape[1] / sample_rate
-    code_sr = (int(coded.shape[1]/dur) // 1000) * 1000 # Round to nearest 1000
+    factor = coded.shape[1] // input_wave.shape[1]
     
+    if factor != 1:
+        coded = change_sample_rate(coded, factor*sample_rate, sample_rate)
     
-    resized = change_sample_rate(coded, code_sr, sample_rate)
-    
-    if resized.shape[1] < input_wave.shape[1]:
-        resized = nn.functional.pad(resized, (0, input_wave.shape[1] - resized.shape[1]))
+    if coded.shape[1] < input_wave.shape[1]:
+        coded = nn.functional.pad(coded, (0, input_wave.shape[1] - coded.shape[1]))
     else:
-        resized = resized[:, :input_wave.shape[1]]
+        # Idk why but extra stuff gets added to the start so lets clip from there???
+        offset = coded.shape[1] - input_wave.shape[1]
+        coded = coded[:, offset:]
     
-    return resized
+    return coded
 
 # Simulates noise and room reverb
 def decrease_quality(input_wave, sample_rate, rir=None, noise=None, snr=16, low_sample_rate=None, codec=None):
@@ -173,12 +174,13 @@ def main():
     output_folder_path = "./data/p225" # only using this specific voice for now
     mic_str = "mic2" # alternative "mic1"
     high_resolution_sample_rate = 16000
-    low_resolution_sample_rate = 16000
+    low_resolution_sample_rate = 4000
     rir_file = None #"eric-rir.flac"
     noise_file = None #"eric-noise.flac"
-    snr_db = 8
-    codec = {'format': "mp3", "compression": 8.0} #<kbps>.<secret parameter i dont understand 0-10>
-    #codec = {'format': 'gsm'} # Currently causes a change in shape
+    snr_db = 16
+    #codec = {'format': "vorbis", "compression": -1} #<kbps>.<secret parameter i dont understand 0-10>
+    #codec = {'format': 'gsm'} 
+    codec = None
     ################### INPUTS ###################
 
     # make direcotry if it doesn't exist
