@@ -37,7 +37,7 @@ class VCTKCroppedDataSet(Dataset):
 
 #  JUST TO TEST IT
 def main():
-    vctk_p255 = VCTKCroppedDataSet(root_dir='data/p225')
+    vctk_p255 = VCTKCroppedDataSet(root_dir='data/wav48_silence_trimmed/p225')
     data_loader = DataLoader(vctk_p255, batch_size=1, shuffle=True)
 
     for data in data_loader:
