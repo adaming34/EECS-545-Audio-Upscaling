@@ -170,7 +170,7 @@ def get_noise(filename, sample_rate):
 
 def main():
     ################### INPUTS ###################
-    input_folder_path = "./VCTK-Corpus-0.92/wav48_silence_trimmed/p225"
+    input_folder_path = "./VTCK/wav48_silence_trimmed/p225"
     output_folder_path = "./data/p225" # only using this specific voice for now
     mic_str = "mic2" # alternative "mic1"
     high_resolution_sample_rate = 16000
