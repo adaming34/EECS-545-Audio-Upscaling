@@ -33,20 +33,20 @@ def calc_lsd(original, sample):
     errs = 2*(sample_ft.log10()).numpy() - 2*(orig_ft.log10()).numpy()
     return ((errs**2).mean(axis=0)**0.5).mean(axis=0)
 
-def spectrogram(sample, title='', sr=16000):
-    viridis = cm.get_cmap('viridis', 256)
-    colors = viridis(np.linspace(0, 1, 256))
-    colors[0, :] = np.array([0. , 0., 0., 0.])
-    cmap = ListedColormap(colors)
+viridis = cm.get_cmap('viridis', 256)
+colors = viridis(np.linspace(0, 1, 256))
+colors[0, :] = np.array([0. , 0., 0., 0.])
+cmap = ListedColormap(colors)
+
+def spectrogram(sample, fig, ax, title='', sr=16000):
     specgram = stft(sample)
-    plt.figure()
     ex = (0, sample.shape[1] / sr, 0, sr/2)
-    plt.imshow(10*specgram.log10()[0,:,:].numpy(), aspect='auto', origin='lower', extent=ex, cmap=cmap, vmin=-60, vmax=20)
-    plt.xlabel('time (s)')
-    plt.ylabel('frequency (Hz)')
-    plt.title(title)
-    cbar = plt.colorbar(label='Intensity (dB)')
-    plt.show()
+    ret = ax.imshow(10*specgram.log10()[0,:,:].numpy(), aspect='auto', origin='lower', extent=ex, cmap=cmap, vmin=-60, vmax=20)
+    ax.set_xlabel('time (s)')
+    ax.set_ylabel('frequency (Hz)')
+    ax.set_title(title)
+    
+    return ret
 
 def main():
     gt_file = sys.argv[1]
@@ -54,10 +54,16 @@ def main():
     
     gt, sr = torchaudio.load(gt_file)
     
-    spectrogram(gt, title='Ground Truth', sr=sr)
+    rows = len(sample_files) // 2 + 1
+    
+    fig, axs = plt.subplots(2, rows, sharex=True, sharey=True, constrained_layout=True)
+    
+    flat_axs = axs.flat
+    
+    pcm = spectrogram(gt, fig, flat_axs[0], title='Ground Truth', sr=sr)
     
     print("          \tpsnr\tlsd")
-    for filename in sample_files:
+    for filename, ax in zip(sample_files, flat_axs[1:]):
         sample, samp_sr = torchaudio.load(filename)
         if samp_sr != sr:
             print(f"{filename} sample-rate ({samp_sr}) doesn't match ground truth sample rate ({sr})")
@@ -71,8 +77,10 @@ def main():
         
         name = ' '.join(filename.split('/')[-1].split('.')[:-1])
         
-        spectrogram(sample[:, :length], title=name, sr=sr)
-
+        pcm = spectrogram(sample[:, :length], fig, ax, title=name, sr=sr)
+    
+    fig.colorbar(pcm, ax=axs[..., 1], label='Intensity (db)')
+    plt.show()
 
 if __name__ == '__main__':
     main()
